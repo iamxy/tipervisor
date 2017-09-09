@@ -4,14 +4,16 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/pingcap/hypervisor/log"
 	"github.com/pingcap/hypervisor/sink"
 	"github.com/pkg/errors"
 )
+
+const minRunningDuration time.Duration = 5 * time.Second
 
 // Process defines operations with process
 type Process interface {
@@ -24,11 +26,7 @@ type Process interface {
 }
 
 type process struct {
-	cwd     string
-	env     map[string]string
-	path    string
-	args    []string
-	user    *user.User
+	*Config
 	logSink sink.LogSink
 
 	cmd          *exec.Cmd
@@ -38,15 +36,15 @@ type process struct {
 
 // Start runs the process
 func (p *process) Start() error {
-	p.cmd = exec.Command(p.path, p.args...)
+	p.cmd = exec.Command(p.Cmd, p.Args...)
 
-	if p.cwd != "" {
-		p.cmd.Dir = p.cwd
+	if p.Cwd != "" {
+		p.cmd.Dir = p.Cwd
 	}
 
-	if p.env != nil {
+	if p.Env != nil {
 		env := os.Environ()
-		for k, v := range p.env {
+		for k, v := range p.Env {
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
 		p.cmd.Env = env
@@ -104,10 +102,18 @@ func (p *process) Start() error {
 
 	go func() {
 		err := p.cmd.Wait()
+		p.eTime = time.Now()
+		// prevent the process from being restarted repeatedly
+		uptime := p.eTime.Sub(p.sTime)
+		if uptime < minRunningDuration {
+			wait := minRunningDuration - uptime
+			time.Sleep(wait)
+		}
+		// stop log sink
 		if p.logSink != nil {
 			p.logSink.Stop()
 		}
-		p.eTime = time.Now()
+		// process exit notification
 		p.errch <- err
 	}()
 
@@ -135,14 +141,14 @@ func (p *process) Pid() int {
 // Signal sends a signal to the process
 func (p *process) Signal(sig syscall.Signal) error {
 	err := syscall.Kill(p.cmd.Process.Pid, sig)
-	return errors.Wrapf(err, "send signal[%v] failed", sig)
+	return errors.Wrapf(err, "sending signal failed")
 }
 
 // Kill the entire process group
 func (p *process) Kill() error {
 	processGroup := 0 - p.cmd.Process.Pid
 	err := syscall.Kill(processGroup, syscall.SIGTERM)
-	return errors.Wrap(err, "kill process failed")
+	return errors.Wrap(err, "killing process failed")
 }
 
 // MustKill try to kill the process and wait for it to die in a timeout period
@@ -150,19 +156,16 @@ func (p *process) MustKill() error {
 	if err := p.Kill(); err != nil {
 		return err
 	}
-
 	select {
 	case <-p.errch:
 		// exited
-		return nil
 	case <-time.After(1 * time.Minute):
+		log.Warnf("kill process [%d] waiting timeout, try to send a kill -9 signal", p.Pid())
 		if err := p.Signal(syscall.SIGKILL); err != nil {
-			return errors.Wrap(err, "kill process -9 failed")
+			return errors.Wrap(err, "killing process -9 failed")
 		}
-		// logger warn kill -9
-		// waiting for process exited
+		// make sure process exited
 		<-p.errch
 	}
-
 	return nil
 }

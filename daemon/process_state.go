@@ -6,16 +6,17 @@ type ProcessState int
 // Enum values of the ProcessState type,
 // borrowed from Supervisord
 const (
-	ProcStatStopped    ProcessState = iota
-	ProcStatStarting                = 10
-	ProcStatRunning                 = 20
-	ProcStatRestarting              = 30
-	ProcStatStopping                = 40
-	ProcStatKilling                 = 50
-	ProcStatKilled                  = 60
-	ProcStatExited                  = 100
-	ProcStatFatal                   = 200
-	ProcStatUnknown                 = 1000
+	ProcStatStopped ProcessState = iota
+	ProcStatStarting
+	ProcStatRunning
+	ProcStatRestarting
+	ProcStatStopping
+	ProcStatKilling
+	ProcStatTerminating
+	ProcStatExited
+	ProcStatKilled
+	ProcStatFatal
+	ProcStatUnknown
 )
 
 func (s ProcessState) String() string {
@@ -34,8 +35,12 @@ func (s ProcessState) String() string {
 		ret = "STOPPING"
 	case ProcStatKilling:
 		ret = "KILLING"
+	case ProcStatTerminating:
+		ret = "TERMINATING"
 	case ProcStatExited:
 		ret = "EXITED"
+	case ProcStatKilled:
+		ret = "KILLED"
 	case ProcStatFatal:
 		ret = "FATAL"
 	case ProcStatUnknown:
@@ -51,7 +56,7 @@ func (d *Daemon) changeToState(s ProcessState) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.state = s
-	// todo: send an event here
+	// todo: emit an event here
 }
 
 // ProcessState returns the current process state

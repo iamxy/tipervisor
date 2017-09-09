@@ -76,18 +76,19 @@ type SignalRequest struct {
 // Signal sends a given signal, and waiting for the daemon return
 func (d *Daemon) Signal(s Signal) error {
 	rc := make(chan error, 1)
-
 	d.sigch <- SignalRequest{
 		signal: s,
 		respc:  rc,
 	}
-
 	select {
 	case err := <-rc:
-		return errors.Wrapf(err, "signal[%v] return error", s)
-	case <-time.After(2 * time.Minute):
-		return errors.Errorf("waiting timeout for signal[%v]", s)
+		if err != nil {
+			return errors.Wrapf(err, "handling signal [%v] return error", s)
+		}
+	case <-time.After(30 * time.Second):
+		return errors.Errorf("waiting timeout 30s for signal [%v]", s)
 	}
+	return nil
 }
 
 func (d *Daemon) handleSignal(r SignalRequest) {
@@ -100,23 +101,25 @@ func (d *Daemon) handleSignal(r SignalRequest) {
 		err = d.proc.Signal(syscall.SIGCONT)
 	case SignalDown:
 		s := d.ProcessState()
-		if s == ProcStatRunning {
+		switch s {
+		case ProcStatRunning:
 			d.changeToState(ProcStatStopping)
 			d.lockOnce = 1
 			err = d.proc.Kill()
-		} else {
-			err = errors.Errorf("can't stop process from state[%v]", s)
+		default:
+			err = errors.Errorf("can't stop process from state [%v]", s)
 		}
 	case SignalHup:
 		err = d.proc.Signal(syscall.SIGHUP)
 	case SignalRestart:
 		s := d.ProcessState()
-		if s == ProcStatRunning {
+		switch s {
+		case ProcStatRunning:
 			d.changeToState(ProcStatRestarting)
 			d.lockOnce = 0
 			err = d.proc.Kill()
-		} else {
-			err = errors.Errorf("can't restart process from state[%v]", s)
+		default:
+			err = errors.Errorf("can't restart process from state [%v]", s)
 		}
 	case SignalInterrupt:
 		err = d.proc.Signal(syscall.SIGINT)
@@ -124,15 +127,13 @@ func (d *Daemon) handleSignal(r SignalRequest) {
 		err = d.proc.Signal(syscall.SIGTTIN)
 	case SignalKill:
 		s := d.ProcessState()
-		if s == ProcStatRunning {
+		switch s {
+		case ProcStatRunning, ProcStatStopping, ProcStatRestarting:
 			d.changeToState(ProcStatKilling)
 			d.lockOnce = 1
 			err = d.proc.Signal(syscall.SIGKILL)
-		} else if s == ProcStatStopping || s == ProcStatRestarting {
-			d.changeToState(ProcStatKilling)
-			err = d.proc.Signal(syscall.SIGKILL)
-		} else {
-			err = errors.Errorf("can't kill process from state[%v]", s)
+		default:
+			err = errors.Errorf("can't kill process from state [%v]", s)
 		}
 	case SignalTtou:
 		err = d.proc.Signal(syscall.SIGTTOU)
@@ -142,13 +143,14 @@ func (d *Daemon) handleSignal(r SignalRequest) {
 		err = d.proc.Signal(syscall.SIGQUIT)
 	case SignalUp:
 		s := d.ProcessState()
-		if s == ProcStatStopped || s == ProcStatKilled || s == ProcStatExited {
+		switch s {
+		case ProcStatStopped, ProcStatKilled, ProcStatExited:
 			d.changeToState(ProcStatStarting)
 			d.lockOnce = 0
-			atomic.StoreUint32(&d.lock, uint32(0))
+			atomic.StoreUint32(&d.lock, d.lockOnce)
 			d.runch <- struct{}{}
-		} else {
-			err = errors.Errorf("can't start process from state[%v]", s)
+		default:
+			err = errors.Errorf("can't start process from state [%v]", s)
 		}
 	case SignalUsr1:
 		err = d.proc.Signal(syscall.SIGUSR1)
