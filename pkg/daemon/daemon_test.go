@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pingcap/hypervisor/sink"
+	"github.com/pingcap/hypervisor/pkg/sink"
 	"github.com/stretchr/testify/assert"
 )
 

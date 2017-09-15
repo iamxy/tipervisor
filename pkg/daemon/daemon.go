@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pingcap/hypervisor/log"
-	"github.com/pingcap/hypervisor/sink"
-	"github.com/pingcap/hypervisor/util"
+	"github.com/pingcap/hypervisor/pkg/log"
+	"github.com/pingcap/hypervisor/pkg/sink"
+	"github.com/pingcap/hypervisor/pkg/util"
 	"github.com/pkg/errors"
 )
 

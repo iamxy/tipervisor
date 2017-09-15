@@ -7,3 +7,8 @@ type LogSink interface {
 	Start(pout, perr *os.File)
 	Stop()
 }
+
+// LogSinkFactory is the interface that wraps the create LogSink method
+type LogSinkFactory interface {
+	NewLogSink() LogSink
+}
