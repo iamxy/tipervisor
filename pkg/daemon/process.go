@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pingcap/hypervisor/pkg/log"
-	"github.com/pingcap/hypervisor/pkg/sink"
+	"github.com/pingcap/tipervisor/pkg/sink"
+	"github.com/pingcap/tipervisor/pkg/util/log"
 	"github.com/pkg/errors"
 )
 
